@@ -35,22 +35,9 @@ try:
 except ImportError:
     memsink = None
 
-
-if hasattr(platform, 'python_implementation'):
-    use_cpython = platform.python_implementation() == 'CPython'
-else:
-    use_cpython = True
-
-if os.getenv('LMDB_FORCE_CFFI') is not None:
-    use_cpython = False
-
-if sys.version[:3] < '2.5':
+if sys.version[:3] < '2.5' or sys.version[:3] in ('3.0', '3.1', '3.2'):
     sys.stderr.write('Error: py-lmdb requires at least CPython 2.5\n')
     raise SystemExit(1)
-
-if sys.version[:3] in ('3.0', '3.1', '3.2'):
-    use_cpython = False
-
 
 #
 # Figure out which LMDB implementation to use.
@@ -79,14 +66,12 @@ else:
     extra_include_dirs += ['lib']
     libraries = []
 
-
 # distutils perplexingly forces NDEBUG for package code!
 extra_compile_args = ['-UNDEBUG']
 
 # Disable some Clang/GCC warnings.
 if not os.getenv('LMDB_MAINTAINER'):
     extra_compile_args += ['-w']
-
 
 # Microsoft Visual Studio 9 ships with neither inttypes.h, stdint.h, or a sane
 # definition for ssize_t, so here we add lib/win32 to the search path, which
@@ -95,7 +80,7 @@ if not os.getenv('LMDB_MAINTAINER'):
 # inttypes.h and stdint.h lack, and to avoid having to modify the LMDB source
 # code. Advapi32 is needed for LMDB's use of Windows security APIs.
 p = sys.version.find('MSC v.')
-msvc_ver = int(sys.version[p+6:p+10]) if p != -1 else None
+msvc_ver = int(sys.version[p + 6:p + 10]) if p != -1 else None
 
 if sys.platform.startswith('win'):
     # If running on Visual Studio<=2010 we must provide <stdint.h>. Newer
@@ -106,44 +91,20 @@ if sys.platform.startswith('win'):
     extra_compile_args += [r'/FIPython.h']
     libraries += ['Advapi32']
 
+print('py-lmdb: Using CPython extension.')
+install_requires = []
+if memsink:
+    extra_compile_args += ['-DHAVE_MEMSINK',
+                           '-I' + os.path.dirname(memsink.__file__)]
+ext_modules = [Extension(
+    name='cpython',
+    sources=['lmdb/cpython.c'] + extra_sources,
+    extra_compile_args=extra_compile_args,
+    libraries=libraries,
+    include_dirs=extra_include_dirs,
+    library_dirs=extra_library_dirs
+)]
 
-# Capture setup.py configuration for later use by cffi, otherwise the
-# configuration may differ, forcing a recompile (and therefore likely compile
-# errors). This happens even when `use_cpython` since user might want to
-# LMDB_FORCE_CFFI=1 during testing.
-with open('lmdb/_config.py', 'w') as fp:
-    fp.write('CONFIG = dict(%r)\n\n' % ((
-        ('extra_compile_args', extra_compile_args),
-        ('extra_sources', extra_sources),
-        ('extra_library_dirs', extra_library_dirs),
-        ('extra_include_dirs', extra_include_dirs),
-        ('libraries', libraries),
-    ),))
-
-
-if use_cpython:
-    print('py-lmdb: Using CPython extension; override with LMDB_FORCE_CFFI=1.')
-    install_requires = []
-    if memsink:
-        extra_compile_args += ['-DHAVE_MEMSINK',
-                               '-I' + os.path.dirname(memsink.__file__)]
-    ext_modules = [Extension(
-        name='cpython',
-        sources=['lmdb/cpython.c'] + extra_sources,
-        extra_compile_args=extra_compile_args,
-        libraries=libraries,
-        include_dirs=extra_include_dirs,
-        library_dirs=extra_library_dirs
-    )]
-else:
-    print('Using cffi extension.')
-    install_requires = ['cffi>=0.8']
-    try:
-        import lmdb.cffi
-        ext_modules = [lmdb.cffi._ffi.verifier.get_extension()]
-    except ImportError:
-        sys.stderr.write('Could not import lmdb; ensure cffi is installed!\n')
-        ext_modules = []
 
 def grep_version():
     path = os.path.join(os.path.dirname(__file__), 'lmdb/__init__.py')
@@ -152,15 +113,16 @@ def grep_version():
             if line.startswith('__version__'):
                 return eval(line.split()[-1])
 
+
 setup(
-    name = 'lmdb',
-    version = grep_version(),
-    description = "Universal Python binding for the LMDB 'Lightning' Database",
-    author = 'David Wilson',
-    license = 'OpenLDAP BSD',
-    url = 'http://github.com/dw/py-lmdb/',
-    packages = ['lmdb'],
-    classifiers = [
+    name='lmdb',
+    version=grep_version(),
+    description="Universal Python binding for the LMDB 'Lightning' Database",
+    author='David Wilson',
+    license='OpenLDAP BSD',
+    url='http://github.com/dw/py-lmdb/',
+    packages=['lmdb'],
+    classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
@@ -175,8 +137,8 @@ setup(
         "Topic :: Database",
         "Topic :: Database :: Database Engines/Servers",
     ],
-    ext_package = 'lmdb',
-    ext_modules = ext_modules,
-    install_requires = install_requires,
-    zip_safe = False
+    ext_package='lmdb',
+    ext_modules=ext_modules,
+    install_requires=install_requires,
+    zip_safe=False
 )
